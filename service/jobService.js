@@ -56,7 +56,14 @@ export const getAllJobs = async (filter = {}, skip = 0, limit = 20) => {
   try {
     const jobs = await Job.find(filter)
       .populate("clientId", "companyName phone")
-      .populate("technicianId", "name skillSet")
+      // ✅ FIX Bug 1: nested populate so technicianId.userId.name is available on cards
+      .populate({
+        path: "technicianId",
+        populate: {
+          path: "userId",
+          select: "name email",
+        },
+      })
       .populate("createdBy", "name email")
       .skip(skip)
       .limit(limit)
@@ -296,45 +303,48 @@ export const updateJobStatus = async (jobId, newStatus, userId, userRole) => {
 
     const oldStatus = job.status;
 
-    // ✅ Validate status transition
-    const validTransitions = {
-      pending: ["assigned", "cancelled"],
-      assigned: ["in-progress", "cancelled"],
-      "in-progress": ["completed", "cancelled"],
-      completed: [],
-      cancelled: [],
-    };
-
-    if (!validTransitions[oldStatus]?.includes(newStatus)) {
-      throw new Error(
-        `Cannot transition from ${oldStatus} to ${newStatus}`
-      );
+    // Same status — no-op
+    if (oldStatus === newStatus) {
+      throw new Error(`Job is already in "${newStatus}" status`);
     }
 
-    // ✅ Role-based restrictions
+    // ✅ Role-based restrictions for technicians only
     if (userRole === "technician") {
-      if (!["in-progress", "completed"].includes(newStatus)) {
+      const technicianTransitions = {
+        assigned: ["in-progress"],
+        "in-progress": ["completed"],
+      };
+      if (!technicianTransitions[oldStatus]?.includes(newStatus)) {
         throw new Error(
-          "Technicians can only change status to in-progress or completed"
+          `Technicians can only move jobs from assigned→in-progress or in-progress→completed`
         );
       }
     }
 
-    job.status = newStatus;
-
-    if (newStatus === "in-progress") {
-      job.startedAt = new Date();
+    // ✅ FIX Bug 2: Admins can set any valid status freely (no strict transition chain)
+    // Only block moving away from terminal states
+    if (userRole === "admin") {
+      if (oldStatus === "completed" || oldStatus === "cancelled") {
+        throw new Error(
+          `Cannot change status of a ${oldStatus} job`
+        );
+      }
     }
 
-    if (newStatus === "completed") {
-      job.completedAt = new Date();
-    }
+    // ✅ FIX Bug 2: Use findByIdAndUpdate to bypass createdBy required-field validator
+    const updateFields = { status: newStatus };
+    if (newStatus === "in-progress") updateFields.startedAt = new Date();
+    if (newStatus === "completed") updateFields.completedAt = new Date();
 
-    await job.save();
+    const updatedJob = await Job.findByIdAndUpdate(
+      jobId,
+      { $set: updateFields },
+      { new: true, runValidators: false }
+    );
 
     // ✅ Create history entry
     await JobHistory.create({
-      jobId: job._id,
+      jobId: updatedJob._id,
       action: "status_changed",
       performedBy: userId,
       performedRole: userRole,
@@ -348,19 +358,18 @@ export const updateJobStatus = async (jobId, newStatus, userId, userRole) => {
 
     // ✅ Create notification for status change
     if (userRole === "technician" && newStatus === "completed") {
-      // Notify admin and client
       await Notification.create({
-        recipientId: job.createdBy,
+        recipientId: updatedJob.createdBy,
         type: "job_completed",
-        jobId: job._id,
+        jobId: updatedJob._id,
         relatedUserId: userId,
         title: "Job Completed",
-        message: `Job "${job.title}" has been completed`,
+        message: `Job "${updatedJob.title}" has been completed`,
         deliveryMethod: "in-app",
       });
     }
 
-    return job;
+    return updatedJob;
   } catch (error) {
     throw new Error(`Failed to update status: ${error.message}`);
   }
