@@ -24,6 +24,7 @@ export const register = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Please provide name, email, and password",
+        error: "Name, email, and password are all required fields",
       });
     }
 
@@ -33,6 +34,7 @@ export const register = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Email already registered",
+        error: `An account with email "${email}" already exists. Please use a different email or try logging in.`,
       });
     }
 
@@ -71,10 +73,11 @@ export const register = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("❌ Admin Registration Error:", error);
     res.status(500).json({
       success: false,
       message: "Registration failed",
-      error: error.message,
+      error: error.message || "An error occurred during registration",
     });
   }
 };
@@ -98,15 +101,17 @@ export const createCompany = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Company name already exists",
+        error: `A company named "${name}" is already registered in the system`,
       });
     }
 
     // Get the admin user
     const user = await User.findById(adminId);
     if (!user) {
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
         message: "User not found",
+        error: `Admin user with ID ${adminId} not found in database`,
       });
     }
 
@@ -144,10 +149,12 @@ export const createCompany = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("❌ Company Creation Error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to create company",
-      error: error.message,
+      error: error.message || "An error occurred while creating the company",
+      details: error.keyPattern ? `Duplicate field: ${Object.keys(error.keyPattern).join(", ")}` : null,
     });
   }
 };
@@ -168,9 +175,10 @@ export const inviteTechnician = async (req, res) => {
     // Get admin's company
     const admin = await Admin.findOne({ userId: adminId });
     if (!admin) {
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
         message: "Admin not found",
+        error: `Admin profile not found for user ID: ${adminId}`,
       });
     }
 
@@ -180,6 +188,7 @@ export const inviteTechnician = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "User with this email already exists",
+        error: `The email "${email}" is already registered in the system. Please use a different email.`,
       });
     }
 
@@ -229,8 +238,10 @@ export const inviteTechnician = async (req, res) => {
     const company = await Company.findById(admin.company);
 
     // Send invitation email
+    let emailSent = false;
     try {
-      const inviteLink = `${process.env.FRONTEND_URL}/auth/verify-invitation?token=${invitationToken}`;
+      // ✅ FIX: URL must match the frontend route /auth/update-profile (not /auth/verify-invitation)
+      const inviteLink = `${process.env.FRONTEND_URL}/auth/update-profile?token=${invitationToken}`;
       await sendTechnicianInviteEmail(
         name,
         email,
@@ -239,28 +250,29 @@ export const inviteTechnician = async (req, res) => {
         company.name,
         inviteLink,
       );
+      emailSent = true;
     } catch (emailError) {
       console.error("❌ Email sending failed:", emailError.message);
-      // Continue even if email fails, but return warning
-      console.warn(
-        `⚠️  User ${name} created but email invitation failed. They can use temp password: ${randomPassword}`,
-      );
     }
 
     res.status(201).json({
       success: true,
-      message: "Invitation sent successfully",
+      message: emailSent 
+        ? "Invitation sent successfully" 
+        : "Technician created but invitation email could not be sent. User can login with temporary password.",
       data: {
-        inviteLink: `${process.env.FRONTEND_URL}/auth/verify-invitation?token=${invitationToken}`,
+        inviteLink: `${process.env.FRONTEND_URL}/auth/update-profile?token=${invitationToken}`,
         tempPassword: randomPassword,
         email,
+        emailSent,
       },
     });
   } catch (error) {
+    console.error("❌ Technician Invitation Error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to send invitation",
-      error: error.message,
+      error: error.message || "An error occurred while sending technician invitation",
     });
   }
 };
@@ -281,9 +293,10 @@ export const inviteClient = async (req, res) => {
     // Get admin's company
     const admin = await Admin.findOne({ userId: adminId });
     if (!admin) {
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
         message: "Admin not found",
+        error: `Admin profile not found for user ID: ${adminId}`,
       });
     }
 
@@ -293,6 +306,7 @@ export const inviteClient = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "User with this email already exists",
+        error: `The email "${email}" is already registered in the system. Please use a different email.`,
       });
     }
 
@@ -317,6 +331,7 @@ export const inviteClient = async (req, res) => {
     const company = await Company.findById(admin.company);
 
     // Send invitation email
+    let emailSent = false;
     try {
       const signupLink = `${process.env.FRONTEND_URL}/auth/signup-client?token=${invitationToken}&email=${email}`;
       await sendClientInviteEmail(
@@ -326,23 +341,27 @@ export const inviteClient = async (req, res) => {
         company.name,
         signupLink,
       );
+      emailSent = true;
     } catch (emailError) {
-      console.error("Email sending failed:", emailError);
-      // Continue even if email fails, return success
+      console.error("❌ Email sending failed:", emailError.message);
     }
 
     res.status(201).json({
       success: true,
-      message: "Client invitation sent successfully",
+      message: emailSent 
+        ? "Client invitation sent successfully" 
+        : "Client invitation created but email could not be sent",
       data: {
         signupLink: `${process.env.FRONTEND_URL}/auth/signup-client?token=${invitationToken}&email=${email}`,
+        emailSent,
       },
     });
   } catch (error) {
+    console.error("❌ Client Invitation Error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to send client invitation",
-      error: error.message,
+      error: error.message || "An error occurred while sending client invitation",
     });
   }
 };
@@ -355,7 +374,7 @@ export const login = async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Please provide email and password",
+        message: "Please provide both email and password",
       });
     }
 
@@ -363,18 +382,20 @@ export const login = async (req, res) => {
     const user = await User.findOne({ email }).select("+password");
 
     if (!user) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: "User not found with this email",
+        error: `No account found for email: ${email}`,
       });
     }
 
     // Check password
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await user.matchPassword(password);
     if (!isPasswordValid) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: "Password is incorrect",
+        error: `Invalid password for user: ${email}`,
       });
     }
 
@@ -428,10 +449,11 @@ export const login = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("❌ Login Error:", error);
     res.status(500).json({
       success: false,
       message: "Login failed",
-      error: error.message,
+      error: error.message || "An unexpected error occurred during login",
     });
   }
 };
@@ -444,28 +466,47 @@ export const verifyInvitation = async (req, res) => {
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
         message: "User not found",
+        error: `User with ID ${userId} not found in database`,
       });
     }
 
     const company = await Company.findById(user.company);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+        error: `Company for user ${userId} not found`,
+      });
+    }
+
     const invitationLink = company.invitationLinks.find(
       (link) => link.token === token,
     );
 
-    if (!invitationLink || invitationLink.used) {
+    if (!invitationLink) {
+      return res.status(401).json({
+        success: false,
+        message: "Invitation token not found",
+        error: "The provided invitation token does not exist or is invalid",
+      });
+    }
+
+    if (invitationLink.used) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired invitation",
+        message: "Invitation already used",
+        error: "This invitation has already been used",
       });
     }
 
     if (new Date() > invitationLink.expiresAt) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
         message: "Invitation has expired",
+        error: `Invitation expired on ${invitationLink.expiresAt.toDateString()}. Please request a new invitation.`,
       });
     }
 
@@ -500,10 +541,11 @@ export const verifyInvitation = async (req, res) => {
       message: "Profile updated successfully",
     });
   } catch (error) {
+    console.error("❌ Verification Error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to verify invitation",
-      error: error.message,
+      error: error.message || "An error occurred during invitation verification",
     });
   }
 };
@@ -518,6 +560,14 @@ export const signupClient = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
+        error: "Please provide email, password, name, and invitation token",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
       });
     }
 
@@ -529,9 +579,10 @@ export const signupClient = async (req, res) => {
     });
 
     if (!company) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
         message: "Invalid invitation token",
+        error: `No valid invitation found for email: ${email}. The token may be invalid or expired.`,
       });
     }
 
@@ -539,10 +590,19 @@ export const signupClient = async (req, res) => {
       (link) => link.token === token && link.email === email,
     );
 
-    if (invitationLink.used || new Date() > invitationLink.expiresAt) {
+    if (invitationLink.used) {
       return res.status(400).json({
         success: false,
-        message: "Invitation expired or already used",
+        message: "Invitation already used",
+        error: "This invitation has already been used to create an account",
+      });
+    }
+
+    if (new Date() > invitationLink.expiresAt) {
+      return res.status(401).json({
+        success: false,
+        message: "Invitation expired",
+        error: `This invitation expired on ${invitationLink.expiresAt.toDateString()}. Please request a new invitation.`,
       });
     }
 
@@ -552,6 +612,7 @@ export const signupClient = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Email already registered",
+        error: `The email "${email}" is already registered in the system`,
       });
     }
 
@@ -614,10 +675,11 @@ export const signupClient = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("❌ Client Signup Error:", error);
     res.status(500).json({
       success: false,
       message: "Client registration failed",
-      error: error.message,
+      error: error.message || "An error occurred while registering client",
     });
   }
 };
@@ -630,6 +692,7 @@ export const refreshAccessToken = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: "Refresh token not found",
+        error: "No refresh token found in cookies. Please login again.",
       });
     }
 
@@ -639,6 +702,7 @@ export const refreshAccessToken = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: "Invalid refresh token",
+        error: "The refresh token is invalid or has expired. Please login again.",
       });
     }
 
@@ -648,6 +712,7 @@ export const refreshAccessToken = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "User not found",
+        error: `User with ID ${decoded.id} no longer exists. Please login again.`,
       });
     }
 
@@ -661,10 +726,11 @@ export const refreshAccessToken = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("❌ Token Refresh Error:", error);
     res.status(500).json({
       success: false,
       message: "Token refresh failed",
-      error: error.message,
+      error: error.message || "An error occurred while refreshing token",
     });
   }
 };
@@ -678,10 +744,11 @@ export const logout = async (req, res) => {
       message: "Logged out successfully",
     });
   } catch (error) {
+    console.error("❌ Logout Error:", error);
     res.status(500).json({
       success: false,
       message: "Logout failed",
-      error: error.message,
+      error: error.message || "An error occurred during logout",
     });
   }
 };

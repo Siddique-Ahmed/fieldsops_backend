@@ -26,6 +26,36 @@ const userSchema = new mongoose.Schema(
       enum: ["admin", "technician", "client"],
       default: "client",
     },
+    // ✅ FIX: Added missing company reference
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+    },
+    // ✅ FIX: Added missing status field
+    status: {
+      type: String,
+      enum: ["active", "pending", "inactive"],
+      default: "active",
+    },
+    // ✅ FIX: Added missing profileRef for role-specific profile IDs
+    profileRef: {
+      admin: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Admin",
+        default: null,
+      },
+      technician: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Technician",
+        default: null,
+      },
+      client: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Client",
+        default: null,
+      },
+    },
   },
   {
     timestamps: true,
@@ -33,14 +63,13 @@ const userSchema = new mongoose.Schema(
 );
 
 // Hash password before saving
-userSchema.pre("save", async function (next) {
+userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
-    return next();
+    return;
   }
 
   const salt = await bcryptjs.genSalt(10);
   this.password = await bcryptjs.hash(this.password, salt);
-  next();
 });
 
 // Method to compare passwords

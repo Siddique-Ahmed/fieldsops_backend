@@ -77,10 +77,10 @@ export const createJob = async (req, res) => {
 export const getAllJobs = async (req, res) => {
   try {
     const jobs = await Job.find()
-      .populate("clientId")
+      .populate({ path: "clientId", populate: { path: "userId", select: "name email" } })
       .populate({
         path: "technicianId",
-        populate: { path: "userId" },
+        populate: { path: "userId", select: "name email" },
       });
 
     res.status(200).json({
@@ -101,12 +101,12 @@ export const getJobById = async (req, res) => {
     const { id } = req.params;
 
     const job = await Job.findById(id)
-      .populate("clientId")
+      .populate({ path: "clientId", populate: { path: "userId", select: "name email" } })
       .populate({
         path: "technicianId",
-        populate: { path: "userId" },
+        populate: { path: "userId", select: "name email" },
       })
-      .populate("notes.addedBy");
+      .populate("notes.addedBy", "name email");
 
     if (!job) {
       return res.status(404).json({
@@ -133,10 +133,10 @@ export const getClientJobs = async (req, res) => {
     const { clientId } = req.params;
 
     const jobs = await Job.find({ clientId })
-      .populate("clientId")
+      .populate({ path: "clientId", populate: { path: "userId", select: "name email" } })
       .populate({
         path: "technicianId",
-        populate: { path: "userId" },
+        populate: { path: "userId", select: "name email" },
       });
 
     res.status(200).json({
@@ -157,10 +157,10 @@ export const getTechnicianJobs = async (req, res) => {
     const { technicianId } = req.params;
 
     const jobs = await Job.find({ technicianId })
-      .populate("clientId")
+      .populate({ path: "clientId", populate: { path: "userId", select: "name email" } })
       .populate({
         path: "technicianId",
-        populate: { path: "userId" },
+        populate: { path: "userId", select: "name email" },
       });
 
     res.status(200).json({
@@ -205,10 +205,10 @@ export const assignTechnician = async (req, res) => {
       },
       { new: true },
     )
-      .populate("clientId")
+      .populate({ path: "clientId", populate: { path: "userId", select: "name email" } })
       .populate({
         path: "technicianId",
-        populate: { path: "userId" },
+        populate: { path: "userId", select: "name email" },
       });
 
     if (!job) {
@@ -270,10 +270,10 @@ export const updateJobStatus = async (req, res) => {
     }
 
     const job = await Job.findByIdAndUpdate(jobId, updateData, { new: true })
-      .populate("clientId")
+      .populate({ path: "clientId", populate: { path: "userId", select: "name email" } })
       .populate({
         path: "technicianId",
-        populate: { path: "userId" },
+        populate: { path: "userId", select: "name email" },
       });
 
     if (!job) {
@@ -322,12 +322,12 @@ export const addNote = async (req, res) => {
       },
       { new: true },
     )
-      .populate("clientId")
+      .populate({ path: "clientId", populate: { path: "userId", select: "name email" } })
       .populate({
         path: "technicianId",
-        populate: { path: "userId" },
+        populate: { path: "userId", select: "name email" },
       })
-      .populate("notes.addedBy");
+      .populate("notes.addedBy", "name email");
 
     if (!job) {
       return res.status(404).json({
@@ -365,10 +365,10 @@ export const updateJob = async (req, res) => {
       },
       { new: true, runValidators: true },
     )
-      .populate("clientId")
+      .populate({ path: "clientId", populate: { path: "userId", select: "name email" } })
       .populate({
         path: "technicianId",
-        populate: { path: "userId" },
+        populate: { path: "userId", select: "name email" },
       });
 
     if (!job) {

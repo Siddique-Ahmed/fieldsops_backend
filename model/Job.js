@@ -21,23 +21,30 @@ const jobSchema = new mongoose.Schema(
       enum: ["low", "medium", "high"],
       default: "medium",
     },
+    // ✅ FIX: Changed ref from "User" to "Client" to match controller logic
     clientId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Client",
       required: [true, "Please provide a client ID"],
     },
+    // ✅ FIX: Changed ref from "User" to "Technician" to match controller logic
     technicianId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Technician",
       default: null,
     },
     scheduledAt: {
       type: Date,
       required: [true, "Please provide a scheduled date"],
     },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
     notes: [
       {
-        userId: {
+        // ✅ FIX: Renamed "userId" → "addedBy" to match controller and frontend
+        addedBy: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
         },
@@ -55,17 +62,7 @@ const jobSchema = new mongoose.Schema(
   }
 );
 
-// Populate references
-jobSchema.pre("find", function () {
-  this.populate("clientId", "name email").populate("technicianId", "name email");
-});
-
-jobSchema.pre("findOne", function () {
-  this.populate("clientId", "name email").populate("technicianId", "name email");
-});
-
-jobSchema.pre("findOneAndUpdate", function () {
-  this.populate("clientId", "name email").populate("technicianId", "name email");
-});
+// ✅ FIX: Removed buggy pre-hooks that cause double-populate conflicts.
+// Controllers handle population explicitly with .populate() chaining.
 
 export default mongoose.model("Job", jobSchema);
